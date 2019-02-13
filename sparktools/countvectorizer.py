@@ -33,6 +33,8 @@ def addTermFrequencies(df, vocDir, inputCol="ngrams", targetCol="tf",
         The default CountVectorizer will share the vocabulary across nodes.
         Instead, this function will first split the voc and sum all frequencies for each
         vocabulary chunks.
+        This function take a datframe, will add a "tf" column. You also have to give a directory where
+        the vocabulary will be stored in multiple files (0.pickle, 1.pickle...).
     """
     # We flat all the voc and remove duplicates:
     vocRDD = df.select(inputCol).rdd.flatMap(lambda x: list(set(x[0])))
