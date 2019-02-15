@@ -108,7 +108,7 @@ def addTermFrequencies(df, vocDir, inputCol="ngrams", targetCol="tf",
         # We add all frequencies for the current voc chunk:
         df = df.withColumn(targetCol, theUDF(df[inputCol], df[targetCol]))
         # Here we force spark to execute the withColumn, instead it works lazy and
-        # receive a lot of withColumn stage and crash:
+        # receive a lot of withColumn stage because of the `for` loop and crash:
         df.count()
         # And we continue to the next chunk:
         startIndex += len(whiteVocChunk)
