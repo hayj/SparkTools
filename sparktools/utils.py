@@ -46,3 +46,27 @@ def rddStreamCollect(rdd, chunksSize=1000000, logger=None, verbose=True):
             pb.tic()
         start = end
         end = start + chunksSize
+
+
+def groupAndSumSparseVectors(df, groupByColName="authorialDomain", targetColName="tf"):
+    """
+        This function take a dataframe, group on groupby column and sum SparseVectors in the target column
+    """
+    reduce = df.rdd.reduceByKey(sparseVectorAdd).toDF()
+    reduce = reduce.withColumnRenamed("_1", groupByColName)
+    reduce = reduce.withColumnRenamed("_2", targetColName)
+    return reduce
+
+
+
+def groupAndSumSparseVectors_old(df, groupByColName, targetColName):
+    """
+        This function take a dataframe, group on groupby column and sum SparseVectors in the target column
+    """
+    print("DEPRECATED")
+    exit()
+    goupedDF = df.groupBy(groupByColName).agg(collect_list(targetColName).alias(targetColName))
+    sparseVectorSumUDF = udf(sparseVectorSummerizer, VectorUDT())
+    goupedDF = goupedDF.withColumn(targetColName, sparseVectorSumUDF(goupedDF[targetColName]))
+    return goupedDF
+
