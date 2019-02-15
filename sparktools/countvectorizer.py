@@ -64,7 +64,7 @@ def addTermFrequencies(df, vocDir, inputCol="ngrams", targetCol="tf",
         whiteVocSize = whiteVocChunks.getTotalSize()
         if pruneVoc:
             blackVocSize = blackVocChunks.getTotalSize()
-    # We delete all ngrams which are not in collectedVoc:
+    # We delete all ngrams which are not in whiteVocChunks:
     if pruneVoc:
         for blackVocChunk in pb(blackVocChunks, message="Prunning vocabulary black list", logger=logger, verbose=verbose):
             blackVocChunk = set(blackVocChunk)
@@ -77,7 +77,7 @@ def addTermFrequencies(df, vocDir, inputCol="ngrams", targetCol="tf",
     def __sumTF(ngrams, vector, vocChunkDict, startIndex=0):
         """
             This function take ngrams and a vector, it will add frequencies of these ngrams in
-            the vector at the right index according to the dictionnary of index vocChunkDict
+            the vector at the right index according to the dictionnary of indexes vocChunkDict
             and the startIndex.
         """
         # We create a default dict of zero integers
