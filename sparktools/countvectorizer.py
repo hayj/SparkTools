@@ -16,8 +16,7 @@ from pyspark.ml.feature import HashingTF, IDF, CountVectorizer
 
 def addTermFrequencies(df, vocDir, inputCol="ngrams", targetCol="tf",
                        minDF=2, chunksSize=1000000,
-                       logger=None, verbose=True, removeInputCol=False, pruneVoc=False,
-                       removeInputCol=False):
+                       logger=None, verbose=True, removeInputCol=False, pruneVoc=False):
     """
         The purpose of this function is to replace CountVectorizer which throw either:
          * Remote RPC client disassociated. Likely due to containers exceeding thresholds
@@ -30,6 +29,7 @@ def addTermFrequencies(df, vocDir, inputCol="ngrams", targetCol="tf",
         vocabulary chunks.
         This function take a datframe, will add a "tf" column. You also have to give a directory where
         the vocabulary will be stored in multiple files (0.pickle, 1.pickle...).
+        pruneVoc is very facultative and not mandatory in most cases.
     """
     # First we delete the vocabulary which already exists in the vocDir:
     for current in sortedGlob(vocDir + "/*.pickle"):
@@ -56,6 +56,7 @@ def addTermFrequencies(df, vocDir, inputCol="ngrams", targetCol="tf",
         if pruneVoc:
             blackVocSize = len(blackVocChunks[0])
     else:
+        # ListChunker will serialize by batch to do not need to persist the whole content in memory:
         whiteVocChunks = ListChunker(chunksSize, rddStreamCollect(whiteVocRDD.keys(), chunksSize, logger=logger, verbose=verbose), logger=logger, verbose=verbose)
         if pruneVoc:
             blackVocChunks = ListChunker(chunksSize, rddStreamCollect(blackVocRDD.keys(), chunksSize, logger=logger, verbose=verbose), logger=logger, verbose=verbose)
@@ -125,12 +126,6 @@ def addTermFrequencies(df, vocDir, inputCol="ngrams", targetCol="tf",
     else:
         serialize(whiteVocChunks[0], vocDir + "/0.pickle")
         log("Voc size: " + str(len(whiteVocChunks[0])), logger, verbose=verbose)
-    # We drop the ngrams columns:
-    if removeInputCol:
-        try:
-            df = df.drop(inputCol)
-        except Exception as e:
-            logException(e, logger)
     # We log the end:
     tt.toc("We generated the voc and added term frequencies to the DF.")
     # We return all data:
