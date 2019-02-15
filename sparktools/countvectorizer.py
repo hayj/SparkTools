@@ -41,7 +41,7 @@ def addTermFrequencies(df, vocDir, inputCol="ngrams", targetCol="tf",
     vocRDD = df.select(inputCol).rdd.flatMap(lambda x: list(set(x[0])))
     # We add a count to each row (each row is a ngram):
     vocRDD = vocRDD.map(lambda x: (x, 1))
-    # Now we count document frequencies:
+    # Now we count document frequencies for each term:
     vocRDD = vocRDD.reduceByKey(lambda v1, v2: v1 + v2)
     # We keep only voc element which is >= minDF:
     whiteVocRDD = vocRDD.filter(lambda o: o[1] >= minDF)
@@ -56,7 +56,8 @@ def addTermFrequencies(df, vocDir, inputCol="ngrams", targetCol="tf",
         if pruneVoc:
             blackVocSize = len(blackVocChunks[0])
     else:
-        # ListChunker will serialize by batch to do not need to persist the whole content in memory:
+        # ListChunker will serialize in batchs (chunks) to do not need to persist the whole content in memory
+        # We use rddStreamCollect because the `collect` method of Dataframe load the entire voc in memory
         whiteVocChunks = ListChunker(chunksSize, rddStreamCollect(whiteVocRDD.keys(), chunksSize, logger=logger, verbose=verbose), logger=logger, verbose=verbose)
         if pruneVoc:
             blackVocChunks = ListChunker(chunksSize, rddStreamCollect(blackVocRDD.keys(), chunksSize, logger=logger, verbose=verbose), logger=logger, verbose=verbose)
@@ -95,7 +96,7 @@ def addTermFrequencies(df, vocDir, inputCol="ngrams", targetCol="tf",
         return vector
     # We create the start index of each chunk:
     startIndex = 0
-    # For each white chunk:
+    # For each white chunk (we use `pb` to see a progress bar):
     for whiteVocChunk in pb(whiteVocChunks, message="Summing term frequencies", logger=logger, verbose=verbose):
         # We construct the voc as a dict to have access to indexes in O(1):
         whiteVocChunkDict = dict()
