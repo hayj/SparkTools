@@ -96,15 +96,15 @@ def addTermFrequencies(df, vocDir, inputCol="ngrams", targetCol="tf",
         return vector
     # We create the start index of each chunk:
     startIndex = 0
-    # For each white chunk (we use `pb` to see a progress bar):
-    for whiteVocChunk in pb(whiteVocChunks, message="Summing term frequencies", logger=logger, verbose=verbose):
+    # For each white chunk:
+    for whiteVocChunk in pb(whiteVocChunks, message="Summing term frequencies", logger=logger, verbose=verbose): # We use `pb` to see a progress bar
         # We construct the voc as a dict to have access to indexes in O(1):
         whiteVocChunkDict = dict()
         i = 0
         for current in whiteVocChunk:
             whiteVocChunkDict[current] = i
             i += 1
-        # We create the udf and give whiteVocChunkDict and startIndex
+        # We create the udf and give whiteVocChunkDict and startIndex:
         theUDF = udf(lambda col1, col2: __sumTF(col1, col2, whiteVocChunkDict, startIndex), VectorUDT())
         # We add all frequencies for the current voc chunk:
         df = df.withColumn(targetCol, theUDF(df[inputCol], df[targetCol]))
