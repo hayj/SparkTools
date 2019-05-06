@@ -15,8 +15,10 @@ from pyspark.ml.feature import HashingTF, IDF, CountVectorizer
 
 
 def addTermFrequencies(df, vocDir, inputCol="ngrams", targetCol="tf",
-                       minDF=2, chunksSize=1000000,
-                       logger=None, verbose=True, removeInputCol=False, pruneVoc=False):
+                       minDF=2, chunksSize=10000000,
+                       logger=None, verbose=True, removeInputCol=False, pruneVoc=False, debug=False):
+    print("DEPRECATED")
+    exit()
     """
         The purpose of this function is to replace CountVectorizer which throw either:
          * Remote RPC client disassociated. Likely due to containers exceeding thresholds
@@ -96,6 +98,7 @@ def addTermFrequencies(df, vocDir, inputCol="ngrams", targetCol="tf",
         return vector
     # We create the start index of each chunk:
     startIndex = 0
+    ngramCountCol = "ngramCount"
     # For each white chunk:
     for whiteVocChunk in pb(whiteVocChunks, message="Summing term frequencies", logger=logger, verbose=verbose): # We use `pb` to see a progress bar
         # We construct the voc as a dict to have access to indexes in O(1):
@@ -108,12 +111,31 @@ def addTermFrequencies(df, vocDir, inputCol="ngrams", targetCol="tf",
         theUDF = udf(lambda col1, col2: __sumTF(col1, col2, whiteVocChunkDict, startIndex), VectorUDT())
         # We add all frequencies for the current voc chunk:
         df = df.withColumn(targetCol, theUDF(df[inputCol], df[targetCol]))
+
+
         # Here we force spark to execute the withColumn, instead it works lazy and
         # receive a lot of withColumn stage because of the `for` loop and crash:
         df.count()
+
+        # df = df.where(col("tf").isNotNull()) # This line produce this error: Invalid PythonUDF <lambda>(), requires attributes from more than one child.
+        # TODO do best force like a sum over tf column... # tmpUdf = udf(lambda x, y: len(x) + len(y), IntegerType())
+        
+        # tmpUdf = udf(lambda x: len(x.indices), IntegerType())
+        # df = df.withColumn(ngramCountCol, tmpUdf(df[targetCol]))
+        # reduce = df.select(["authorialDomain", ngramCountCol]).rdd.reduceByKey(lambda x, y: x + y)
+        # theSum = 0
+        # for ad, count in reduce.collect():
+        #     theSum += count
+        # log("theSum=" + str(theSum), logger=logger, verbose=False)
+
         # And we continue to the next chunk:
         startIndex += len(whiteVocChunk)
-    # We drop the ngrams columns:
+    # We drop the ngramCount column:
+    try:
+        df = df.drop(ngramCountCol)
+    except:
+        pass
+    # We drop the ngrams column:
     if removeInputCol:
         df = df.drop(inputCol)
     # We store and reset list chunkers:
@@ -129,6 +151,10 @@ def addTermFrequencies(df, vocDir, inputCol="ngrams", targetCol="tf",
         log("Voc size: " + str(len(whiteVocChunks[0])), logger, verbose=verbose)
     # We log the end:
     tt.toc("We generated the voc and added term frequencies to the DF.")
+    # We print explain:
+    if debug:
+        df.explain()
+        log("df.storageLevel: " + str(df.storageLevel), logger, verbose=verbose)
     # We return all data:
     return df
 

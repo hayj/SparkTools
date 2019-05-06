@@ -4,8 +4,15 @@ from systemtools.basics import *
 from systemtools.location import *
 from systemtools.system import *
 from collections import defaultdict
-
 from pyspark.ml.linalg import SparseVector, Vectors, VectorUDT
+from pyspark.sql.functions import col, udf
+from pyspark.ml.feature import HashingTF, IDF, CountVectorizer
+from pyspark.sql import Row
+from collections import OrderedDict
+import pyspark
+
+def dict2SparseVector(theDict):
+    return SparseVector(theDict["size"], theDict["indices"], theDict["values"])
 
 def sparseVectorAdd(v1, v2):
     """
@@ -47,6 +54,77 @@ def rddStreamCollect(rdd, chunksSize=1000000, logger=None, verbose=True):
         start = end
         end = start + chunksSize
 
+def dfStreamCollect(df, groupBy=None, chunksSize=100000, logger=None, verbose=True, defaultRandomGroupCol="randomGroupCol"):
+    if groupBy is None:
+        from pyspark.sql.functions import rand
+        from pyspark.sql.functions import udf
+        from pyspark.sql.types import LongType
+        log("Starting to generate a random column to split the df", logger=logger, verbose=verbose)
+        groupBy = defaultRandomGroupCol
+        def normalizeRandomCol(randomFloat):
+            return int(chunksSize * randomFloat)
+        df = df.withColumn(groupBy, rand())
+        normalizeRandomColUDF = udf(normalizeRandomCol, LongType())
+        df = df.withColumn(groupBy, normalizeRandomColUDF(df[groupBy]))
+    log("Starting the groupby count", logger=logger, verbose=verbose)
+    dfCount = df.groupBy(groupBy).count()
+    filters = [[]]
+    currentCount = 0
+    groupByNumberOfItems = 0
+    log("Starting to collect filters", logger=logger, verbose=verbose)
+    for row in dfCount.collect():
+        groupByNumberOfItems += 1
+        filters[-1].append(row[groupBy])
+        currentCount += row["count"]
+        if currentCount >= chunksSize:
+            currentCount = 0
+            filters.append([])
+    if len(filters[-1]) == 0:
+        filters = filters[:-1]
+    assert groupByNumberOfItems == len(flattenLists(filters))
+    log("Starting to yield rows", logger=logger, verbose=verbose)
+    for i in pb(range(len(filters)), len(filters), message="Collecting chunks", logger=logger, verbose=verbose):
+        filter = filters[i]
+        for row in df.where(col(groupBy).isin(filter)).collect():
+            row = row.asDict()
+            if defaultRandomGroupCol in row:
+                del row[defaultRandomGroupCol]
+            yield row
+
+
+def dfChunkedSave(df, saveDir, groupBy=None, chunksSize=1000000, saveCallback=None, logger=None, verbose=True, cleanDirPath=True):
+    def __saveCallback(tmpDF, dirPath):
+        tmpDF.write.format("json").option("compression", "bzip2").mode("overwrite").save(dirPath)
+    if saveCallback is None:
+        saveCallback = __saveCallback
+    if groupBy is None:
+        groupBy = df.columns[0]
+        logWarning("We will use " + groupBy + " as the group by column for `dfChunkedSave`.",
+            logger=logger, verbose=verbose)
+    if cleanDirPath:
+        for current in sortedGlob(saveDir + "/*"):
+            removeDirSecure(current, slashCount=4)
+    dfCount = df.groupBy(groupBy).count()
+    filters = [[]]
+    currentCount = 0
+    groupByNumberOfItems = 0
+    for row in dfCount.collect():
+        groupByNumberOfItems += 1
+        filters[-1].append(row[groupBy])
+        currentCount += row["count"]
+        if currentCount >= chunksSize:
+            currentCount = 0
+            filters.append([])
+    if len(filters[-1]) == 0:
+        filters = filters[:-1]
+    assert groupByNumberOfItems == len(flattenLists(filters))
+    for i in pb(range(len(filters)), message="Storing chunks", logger=logger, verbose=verbose):
+        dirPath = saveDir + "/" + str(i)
+        mkdir(dirPath)
+        filter = filters[i]
+        tmpDF = df.where(col(groupBy).isin(filter))
+        saveCallback(tmpDF, dirPath)
+
 
 def groupAndSumSparseVectors(df, groupByColName="authorialDomain", targetColName="tf"):
     """
@@ -63,10 +141,40 @@ def groupAndSumSparseVectors_old(df, groupByColName, targetColName):
     """
         This function take a dataframe, group on groupby column and sum SparseVectors in the target column
     """
-    print("DEPRECATED")
+    print("DEPRECATED groupAndSumSparseVectors_old")
     exit()
     goupedDF = df.groupBy(groupByColName).agg(collect_list(targetColName).alias(targetColName))
     sparseVectorSumUDF = udf(sparseVectorSummerizer, VectorUDT())
     goupedDF = goupedDF.withColumn(targetColName, sparseVectorSumUDF(goupedDF[targetColName]))
     return goupedDF
+
+
+
+def computeTFIDF(df, inputColName="tf", outputColName="tfidf", logger=None, verbose=True, removeInputCol=True):
+    """
+        This add a tfidf column convert a dataframe to 
+        A minDF of 2 will remove term that appear once in the whole corpus
+    """
+    idf = IDF(inputCol=inputColName, outputCol=outputColName)
+    idfModel = idf.fit(df)
+    tfidfDF = idfModel.transform(df)
+    # We drop the tf column:
+    if removeInputCol:
+        try:
+            tfidfDF = tfidfDF.drop(inputColName)
+        except Exception as e:
+            logException(e, logger, verbose=verbose)
+    return tfidfDF
+
+def getDistincts(df, col):
+    return set(df.select(col).distinct().rdd.map(lambda r: r[0]).collect())
+
+def dictToRow(d):
+    return Row(**OrderedDict(sorted(d.items())))
+
+def dictListToDataFrame(l, spark):
+    return spark.sparkContext.parallelize(l).map(dictToRow).toDF()
+
+def mergeDataframes(a, b):
+    return pyspark.sql.DataFrame.unionAll(a, b)
 

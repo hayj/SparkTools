@@ -1,0 +1,43 @@
+Group recommendation system
+Yangke SUN (PhD student in Lahdak team)
+
+Prefernce aggreg strategy : Make the group a virtual individual
+
+
+ * Majority based aggregation
+ * Consensus based agg
+ * ??????
+
+
+QUESTION : Voting theory ?
+Doodle -> interaction
+
+
+
+
+
+QUESTION : Modélisation du fait qu'on retourne qouvent ou pas souvent à une meme items
+Ou généralement on essaye une fois et terminé.
+
+QUESTION : datasets, offline, online ?
+
+
+
+
+
+On trouve les k items tel quel maximise l'utilité et le fairness
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
